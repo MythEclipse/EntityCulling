@@ -33,10 +33,10 @@ bin/
 run/
 logs/
 
-# compose
+# compose legacy (gradle-compose template files)
+# Note: Standard Gradle files (*.gradle, gradle.properties) are now tracked
+# since we migrated from gradle-compose to standard Gradle
 
-*.gradle
-*.properties
-gradle/wrapper
+gradle-compose.jar
 VersionShared
 UtilityCode

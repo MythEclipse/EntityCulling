@@ -1,0 +1,100 @@
+// Shared Module - Core EntityCulling Logic
+// Contains mixins, config, and platform-agnostic code
+
+java {
+    withSourcesJar()
+}
+
+dependencies {
+    // Occlusion culling engine (core dependency)
+    api rootProject.findProperty('occlusion_coordinates')
+    
+    // Mixin framework for bytecode manipulation
+    compileOnly 'org.spongepowered:mixin:0.8.5'
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+task('analyzeMixinClasses') {
+    group 'entityculling-validation'
+    description 'Scans and validates mixin class definitions'
+    doLast {
+        def mixinJsonPath = file('src/main/resources/entityculling.mixins.json')
+        if (!mixinJsonPath.exists()) {
+            throw new GradleException("Mixin config missing: ${mixinJsonPath}")
+        }
+        
+        def slurper = new groovy.json.JsonSlurper()
+        def mixinSpec = slurper.parse(mixinJsonPath)
+        def clientMixins = mixinSpec.client ?: []
+        
+        println "\n╔═══════════════════════════════════════╗"
+        println "║ Shared Module Mixin Analysis         ║"
+        println "╚═══════════════════════════════════════╝"
+        println "Package: ${mixinSpec.package}"
+        println "RefMap: ${mixinSpec.refmap}"
+        println "Compatibility: ${mixinSpec.compatibilityLevel}"
+        println "\nClient-side Mixins (${clientMixins.size()}):"
+        
+        def javaSourceRoot = file('src/main/java')
+        def packagePath = mixinSpec.package.replace('.', '/')
+        
+        clientMixins.each { mixinClassName ->
+            def classFile = new File(javaSourceRoot, "${packagePath}/${mixinClassName}.java")
+            def status = classFile.exists() ? '✓' : '✗'
+            println "  ${status} ${mixinClassName}"
+        }
+    }
+}
+
+task('generateIntegrationManifest') {
+    group 'entityculling-build'
+    description 'Creates manifest describing shared module contents'
+    doLast {
+        def manifestDir = file("${buildDir}/manifests")
+        manifestDir.mkdirs()
+        
+        def manifestFile = new File(manifestDir, 'shared-module-manifest.txt')
+        manifestFile.text = """
+╔══════════════════════════════════════════════════════╗
+║        EntityCulling Shared Module Manifest         ║
+╚══════════════════════════════════════════════════════╝
+
+Build Version: ${project.version}
+Build Time: ${new Date().format('yyyy-MM-dd HH:mm:ss Z')}
+
+Core Components:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• EntityCullingModBase    Abstract platform foundation
+• Config                  Configuration persistence
+• ConfigUpgrader          Settings migration handler
+• Provider                Culling provider abstraction
+
+Access Interfaces:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Cullable                Entity culling state tracker
+• EntityRendererInter     Renderer extension point
+
+Mixin Injections:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• WorldRendererMixin               World render hooks
+• EntityRendererMixin              Entity render hooks
+• BlockEntityRenderDispatcherMixin Tile entity culling
+• CullableMixin                    Entity state injection
+• DebugHudMixin                    Debug overlay
+• ClientWorldMixin                 World lifecycle
+
+Dependencies:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Occlusion Library: ${rootProject.findProperty('occlusion_coordinates')}
+• Mixin Framework: 0.8.5
+
+════════════════════════════════════════════════════════
+This module is consumed by both Fabric and Forge loaders
+════════════════════════════════════════════════════════
+""".stripIndent()
+        
+        println "Manifest generated: ${manifestFile.absolutePath}"
+    }
+}
+
+build.dependsOn analyzeMixinClasses

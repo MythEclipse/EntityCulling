@@ -11,7 +11,6 @@ pluginManagement {
 
 rootProject.name = 'entity-culling-root'
 
-['Shared', 'EntityCulling-Fabric', 'EntityCulling-Forge'].each { modulePath ->
-    include modulePath
-    findProject(":${modulePath}").projectDir = new File(rootDir, modulePath)
-}
+include 'Shared'
+include 'EntityCulling-Fabric'
+include 'EntityCulling-Forge'

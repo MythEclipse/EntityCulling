@@ -1,0 +1,106 @@
+// EntityCulling Root Orchestrator
+// Coordinates compilation across Shared, Fabric, and Forge modules
+
+allprojects {
+    apply plugin: 'java-library'
+    
+    group = findProperty('mod_group')
+    version = findProperty('mod_version')
+    
+    java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+    
+    repositories {
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+        maven { url 'https://maven.fabricmc.net/' }
+        maven { url 'https://maven.minecraftforge.net/' }
+        maven { url 'https://repo.spongepowered.org/repository/maven-public/' }
+    }
+}
+
+subprojects { subProj ->
+    tasks.withType(JavaCompile) {
+        options.encoding = 'UTF-8'
+        options.release.set(17)
+    }
+    
+    task('inspectConfiguration') {
+        group 'entityculling-diagnostics'
+        description "Analyzes ${subProj.name} configuration and dependencies"
+        doLast {
+            println "\n=== ${subProj.name} Configuration ==="
+            println "Group: ${subProj.group}"
+            println "Version: ${subProj.version}"
+            println "Java Version: ${subProj.java.toolchain.languageVersion.get()}"
+            
+            def relevantConfigs = subProj.configurations.findAll { 
+                it.canBeResolved && (it.name.contains('compile') || it.name.contains('runtime'))
+            }
+            
+            relevantConfigs.each { config ->
+                println "\n${config.name}:"
+                try {
+                    config.resolvedConfiguration.firstLevelModuleDependencies.each { dep ->
+                        println "  → ${dep.moduleGroup}:${dep.moduleName}:${dep.moduleVersion}"
+                    }
+                } catch (ignored) {
+                    println "  (not resolvable at this stage)"
+                }
+            }
+        }
+    }
+}
+
+task('buildAllModules') {
+    group 'entityculling-build'
+    description 'Compiles all EntityCulling modules (Shared + Fabric + Forge)'
+    dependsOn subprojects.collect { it.tasks.matching { t -> t.name == 'build' } }
+}
+
+task('cleanAllModules') {
+    group 'entityculling-build'
+    description 'Removes build artifacts from all modules'
+    dependsOn subprojects.collect { it.tasks.matching { t -> t.name == 'clean' } }
+}
+
+task('validateOcclusionIntegration') {
+    group 'entityculling-diagnostics'
+    description 'Verifies occlusion culling library integration across modules'
+    doLast {
+        def occlusionCoords = findProperty('occlusion_coordinates')
+        println "\n╔═══════════════════════════════════════╗"
+        println "║ EntityCulling Occlusion Validation   ║"
+        println "╚═══════════════════════════════════════╝"
+        println "Library: ${occlusionCoords}"
+        println "\nModule Status:"
+        
+        subprojects.each { sp ->
+            def hasOcclusion = sp.configurations.any { cfg ->
+                try {
+                    cfg.canBeResolved && cfg.dependencies.any { 
+                        "${it.group}:${it.name}:${it.version}" == occlusionCoords
+                    }
+                } catch (ignored) { false }
+            }
+            println "  ${sp.name}: ${hasOcclusion ? '✓ Integrated' : '✗ Missing'}"
+        }
+    }
+}
+
+task('reportModuleVersions') {
+    group 'entityculling-diagnostics'
+    description 'Displays version information for all modules'
+    doLast {
+        println "\n╔═══════════════════════════════════════╗"
+        println "║ EntityCulling Version Report         ║"
+        println "╚═══════════════════════════════════════╝"
+        println "Mod Version: ${findProperty('mod_version')}"
+        println "Mod ID: ${findProperty('mod_identifier')}"
+        println "Author: ${findProperty('mod_creator')}"
+        println "\nTarget Platforms:"
+        println "  • Minecraft: ${findProperty('target_minecraft')}"
+        println "  • Fabric Loader: ${findProperty('fabric_loader')}"
+        println "  • Forge: ${findProperty('forge_full')} (specified 47.4.3)"
+        println "  • Yarn Mappings: ${findProperty('yarn_build')} (user requested)"
+    }
+}

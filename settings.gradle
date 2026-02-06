@@ -1,0 +1,16 @@
+// EntityCulling Settings - Custom tri-module orchestration
+// Specialized configuration for tr7zw's entity occlusion system
+
+pluginManagement {
+    repositories {
+        maven { url 'https://maven.fabricmc.net/' }
+        maven { url 'https://maven.minecraftforge.net/' }
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'entity-culling-root'
+
+include 'Shared'
+include 'EntityCulling-Fabric'
+include 'EntityCulling-Forge'

@@ -1,0 +1,189 @@
+// EntityCulling Forge Edition
+// Implements entity culling for Forge 47.4.3 (specified version target)
+
+buildscript {
+    repositories {
+        maven { url 'https://maven.minecraftforge.net/' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath "net.minecraftforge.gradle:ForgeGradle:${rootProject.findProperty('forge_gradle')}"
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'EntityCulling-Forge'
+
+minecraft {
+    def parchMc = rootProject.findProperty('parch_mc')
+    def parchBuild = rootProject.findProperty('parch_build')
+    def targetMc = rootProject.findProperty('target_minecraft')
+    
+    mappings channel: 'parchment', version: "${parchMc}-${parchBuild}-${targetMc}"
+    
+    runs {
+        forgeClient {
+            workingDirectory file('run')
+            
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'info'
+            
+            args '--width', '1920'
+            args '--height', '1080'
+            
+            mods {
+                entityculling {
+                    source sourceSets.main
+                    source project(':Shared').sourceSets.main
+                }
+            }
+        }
+        
+        forgeData {
+            workingDirectory file('run-data')
+            
+            property 'forge.logging.console.level', 'debug'
+            
+            args '--mod', rootProject.findProperty('mod_identifier')
+            args '--all'
+            args '--output', file('src/generated/resources/')
+            args '--existing', file('src/main/resources/')
+            
+            mods {
+                entityculling {
+                    source sourceSets.main
+                    source project(':Shared').sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    def forgeFullVersion = rootProject.findProperty('forge_full')
+    minecraft "net.minecraftforge:forge:${forgeFullVersion}"
+    
+    // Shared module integration
+    implementation project(':Shared')
+    
+    // Occlusion library with JarJar embedding
+    def occlusionCoords = rootProject.findProperty('occlusion_coordinates')
+    def occlusionParts = occlusionCoords.split(':')
+    jarJar(group: occlusionParts[0], name: occlusionParts[1], version: occlusionParts[2]) {
+        transitive = false
+    }
+    implementation occlusionCoords
+    
+    // Mixin annotation processing
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+}
+
+tasks.withType(JavaCompile) {
+    options.annotationProcessorPath = configurations.annotationProcessor
+}
+
+jar {
+    from(project(':Shared').sourceSets.main.output) {
+        include '**'
+    }
+    
+    manifest {
+        def attrs = [
+            'Specification-Title': rootProject.findProperty('mod_identifier'),
+            'Specification-Vendor': rootProject.findProperty('mod_creator'),
+            'Specification-Version': '1',
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': rootProject.findProperty('mod_creator'),
+            'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+            'MixinConfigs': rootProject.findProperty('mixin_config_name')
+        ]
+        attributes(attrs)
+    }
+    
+    finalizedBy 'reobfJar'
+}
+
+sourceSets.main.resources.srcDirs += project(':Shared').file('src/main/resources')
+
+processResources {
+    def expansionVars = [
+        'mod_version': project.version,
+        'mod_identifier': rootProject.findProperty('mod_identifier'),
+        'mod_creator': rootProject.findProperty('mod_creator'),
+        'minecraft_range': rootProject.findProperty('minecraft_range'),
+        'forge_full': rootProject.findProperty('forge_full')
+    ]
+    
+    inputs.properties(expansionVars)
+    
+    filesMatching('META-INF/mods.toml') {
+        expand(expansionVars)
+    }
+}
+
+task('confirmForgeVersion') {
+    group 'entityculling-validation'
+    description 'Validates Forge 47.4.3 target (specified requirement)'
+    doLast {
+        def configuredForge = rootProject.findProperty('forge_full')
+        def targetForgeVersion = '47.4.3'
+        
+        println "\n╔═══════════════════════════════════════╗"
+        println "║ Forge Version Validation             ║"
+        println "╚═══════════════════════════════════════╝"
+        println "Required: Forge 47.4.3"
+        println "Configured: ${configuredForge}"
+        
+        if (configuredForge.contains(targetForgeVersion)) {
+            println "\n✓ Correct Forge version configured"
+        } else {
+            println "\n✗ WARNING: Forge version mismatch!"
+            println "  Expected: ${targetForgeVersion}"
+            println "  Got: ${configuredForge}"
+        }
+        
+        println "\nParchment Mappings:"
+        println "  ${rootProject.findProperty('parch_mc')}-${rootProject.findProperty('parch_build')}"
+    }
+}
+
+task('assembleForgeDistribution') {
+    group 'entityculling-build'
+    description 'Packages Forge mod with JarJar dependencies'
+    dependsOn 'build'
+    doLast {
+        def outputJar = jar.archiveFile.get().asFile
+        def sizeKb = outputJar.length() / 1024
+        
+        println "\n╔═══════════════════════════════════════╗"
+        println "║ Forge Distribution Packaged          ║"
+        println "╚═══════════════════════════════════════╝"
+        println "Artifact: ${outputJar.name}"
+        println "Location: ${outputJar.parent}"
+        println "Size: ${String.format('%.2f', sizeKb)} KB"
+        println "Forge Target: 47.4.3"
+        println "\nIncludes:"
+        println "  • Shared module code and mixins"
+        println "  • Occlusion library (JarJar embedded)"
+        println "  • Parchment-mapped references"
+    }
+}
+
+publishing {
+    publications {
+        forgeMod(MavenPublication) {
+            groupId = project.group
+            artifactId = 'entityculling-forge'
+            version = project.version
+            
+            artifact jar
+        }
+    }
+}
+
+build.dependsOn confirmForgeVersion
+
+assemble.dependsOn 'reobfJar'
